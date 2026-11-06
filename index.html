@@ -18,22 +18,62 @@ button:disabled{opacity:.5}#status{padding:12px 0}#moves{overflow-wrap:anywhere;
 <p class="note">Erster Browser-Prototyp. Noch keine Brillenkamera, kein Brillendisplay und keine automatische Zugempfehlung.</p>
 <div id="board"></div>
 <div id="status" aria-live="polite"></div>
-<button id="reset">Neues Spiel</button><button id="undo">Zug zurück</button><button id="flip">Brett drehen</button>
-<h2>Zugliste</h2><div id="moves">Noch keine Züge.</div>
-<p class="note">Die Stockfish.js-Engine wird als nächster Schritt lokal eingebunden. Bitte nur zum Üben oder für erlaubte Analysen verwenden.</p>
+<button id="analyze">Besten Zug berechnen</button><button id="computer">Gegen Computer: Aus</button><button id="reset">Neues Spiel</button><button id="undo">Zug zurück</button><button id="flip">Brett drehen</button>
+<div id="engineStatus" aria-live="polite">Stockfish wird geladen …</div><div id="recommendation" aria-live="polite"></div><h2>Zugliste</h2><div id="moves">Noch keine Züge.</div>
+<p class="note">Die Engine wird über einen externen CDN geladen und benötigt Internet. Die Analyse ist nur für Training und erlaubte Partien gedacht.</p>
 </main>
 <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
 <script>
 const game = new Chess();
+let engine=null, ready=false, busy=false, againstComputer=false, pending=null;
+const statusEngine=document.getElementById('engineStatus');
+const recommendation=document.getElementById('recommendation');
+function send(cmd){if(engine)engine.postMessage(cmd)}
+function requestEngine(kind){
+ if(!ready||busy||game.game_over())return;
+ busy=true; pending=kind;
+ recommendation.textContent='Stockfish denkt …';
+ send('position fen '+game.fen());
+ send('go depth 12');
+}
+try{
+ const workerSource="importScripts('https://cdn.jsdelivr.net/npm/stockfish@19.0.1/bin/stockfish-19-asm.js');";
+ const workerUrl=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));
+ engine=new Worker(workerUrl);
+ URL.revokeObjectURL(workerUrl);
+ engine.onerror=()=>{ready=false;busy=false;statusEngine.textContent='Stockfish konnte nicht geladen werden. Prüfe die Internetverbindung.'};
+ engine.onmessage=(event)=>{
+  const line=String(event.data);
+  if(line.includes('uciok')){send('isready')}
+  if(line.includes('readyok')){ready=true;statusEngine.textContent='Stockfish bereit'}
+  const match=line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
+  if(match && busy){
+   const kind=pending;busy=false;pending=null;
+   const uci=match[1], from=uci.slice(0,2),to=uci.slice(2,4);
+   if(kind==='play'){
+    const move=game.move({from,to,promotion:uci[4]||'q'});
+    if(move){board.position(game.fen());refresh();}
+    recommendation.textContent='Computerzug: '+(move?move.san:uci);
+   }else{
+    const copy=new Chess(game.fen());
+    const move=copy.move({from,to,promotion:uci[4]||'q'});
+    recommendation.textContent='Empfohlener Zug: '+(move?move.san:uci);
+   }
+  }
+ };
+ send('uci');
+}catch(e){statusEngine.textContent='Stockfish konnte nicht gestartet werden.'}
+
 const board = Chessboard('board', {
  draggable:true,position:'start',
  onDragStart:(source,piece)=>!game.game_over() && piece[0]===game.turn(),
  onDrop:(source,target)=>{
   const move=game.move({from:source,to:target,promotion:'q'});
   if(!move)return 'snapback';
-  refresh();
+  recommendation.textContent='';refresh();
+  if(againstComputer && ready && !game.game_over())requestEngine('play');
  },
  onSnapEnd:()=>board.position(game.fen())
 });
@@ -45,8 +85,14 @@ function refresh(){
  document.getElementById('status').textContent=s;
  document.getElementById('moves').textContent=game.pgn()||'Noch keine Züge.';
 }
-document.getElementById('reset').onclick=()=>{game.reset();board.start();refresh()};
-document.getElementById('undo').onclick=()=>{game.undo();board.position(game.fen());refresh()};
+document.getElementById('analyze').onclick=()=>requestEngine('analyze');
+document.getElementById('computer').onclick=()=>{
+ againstComputer=!againstComputer;
+ document.getElementById('computer').textContent='Gegen Computer: '+(againstComputer?'An':'Aus');
+ if(againstComputer&&ready&&!busy&&!game.game_over()&&game.turn()==='b')requestEngine('play');
+};
+document.getElementById('reset').onclick=()=>{if(busy){send('stop');busy=false;pending=null}game.reset();board.start();recommendation.textContent='';refresh()};
+document.getElementById('undo').onclick=()=>{if(busy){send('stop');busy=false;pending=null}game.undo();if(againstComputer)game.undo();board.position(game.fen());recommendation.textContent='';refresh()};
 document.getElementById('flip').onclick=()=>board.flip();
 refresh();
 </script></body></html>
