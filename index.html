@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ray-Ban Schach – Prototyp</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
+<style>
+body{margin:0;background:#111827;color:#f9fafb;font:16px system-ui,sans-serif}
+main{max-width:580px;margin:auto;padding:20px}
+h1{font-size:1.5rem}#board{width:100%;max-width:520px}
+button{background:#2563eb;color:white;border:0;border-radius:8px;padding:12px;margin:5px 4px 5px 0;font-size:15px}
+button:disabled{opacity:.5}#status{padding:12px 0}#moves{overflow-wrap:anywhere;color:#cbd5e1}
+.note{color:#fbbf24;font-size:.9rem;line-height:1.5}
+</style>
+</head>
+<body><main>
+<h1>♟️ Ray-Ban Schach</h1>
+<p class="note">Erster Browser-Prototyp. Noch keine Brillenkamera, kein Brillendisplay und keine automatische Zugempfehlung.</p>
+<div id="board"></div>
+<div id="status" aria-live="polite"></div>
+<button id="reset">Neues Spiel</button><button id="undo">Zug zurück</button><button id="flip">Brett drehen</button>
+<h2>Zugliste</h2><div id="moves">Noch keine Züge.</div>
+<p class="note">Die Stockfish.js-Engine wird als nächster Schritt lokal eingebunden. Bitte nur zum Üben oder für erlaubte Analysen verwenden.</p>
+</main>
+<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
+<script>
+const game = new Chess();
+const board = Chessboard('board', {
+ draggable:true,position:'start',
+ onDragStart:(source,piece)=>!game.game_over() && piece[0]===game.turn(),
+ onDrop:(source,target)=>{
+  const move=game.move({from:source,to:target,promotion:'q'});
+  if(!move)return 'snapback';
+  refresh();
+ },
+ onSnapEnd:()=>board.position(game.fen())
+});
+function refresh(){
+ let s=game.turn()==='w'?'Weiß am Zug':'Schwarz am Zug';
+ if(game.in_checkmate())s='Schachmatt!';
+ else if(game.in_draw())s='Remis!';
+ else if(game.in_check())s+=' – Schach!';
+ document.getElementById('status').textContent=s;
+ document.getElementById('moves').textContent=game.pgn()||'Noch keine Züge.';
+}
+document.getElementById('reset').onclick=()=>{game.reset();board.start();refresh()};
+document.getElementById('undo').onclick=()=>{game.undo();board.position(game.fen());refresh()};
+document.getElementById('flip').onclick=()=>board.flip();
+refresh();
+</script></body></html>
