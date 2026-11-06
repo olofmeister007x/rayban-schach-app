@@ -1,98 +1,41 @@
-<!doctype html>
-<html lang="de">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Ray-Ban Schach – Prototyp</title>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.css">
+<!doctype html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Ray-Ban Schach</title>
 <style>
-body{margin:0;background:#111827;color:#f9fafb;font:16px system-ui,sans-serif}
-main{max-width:580px;margin:auto;padding:20px}
-h1{font-size:1.5rem}#board{width:100%;max-width:520px}
-button{background:#2563eb;color:white;border:0;border-radius:8px;padding:12px;margin:5px 4px 5px 0;font-size:15px}
-button:disabled{opacity:.5}#status{padding:12px 0}#moves{overflow-wrap:anywhere;color:#cbd5e1}
-.note{color:#fbbf24;font-size:.9rem;line-height:1.5}
-</style>
-</head>
-<body><main>
-<h1>♟️ Ray-Ban Schach</h1>
-<p class="note">Erster Browser-Prototyp. Noch keine Brillenkamera, kein Brillendisplay und keine automatische Zugempfehlung.</p>
-<div id="board"></div>
-<div id="status" aria-live="polite"></div>
-<button id="analyze">Besten Zug berechnen</button><button id="computer">Gegen Computer: Aus</button><button id="reset">Neues Spiel</button><button id="undo">Zug zurück</button><button id="flip">Brett drehen</button>
-<div id="engineStatus" aria-live="polite">Stockfish wird geladen …</div><div id="recommendation" aria-live="polite"></div><h2>Zugliste</h2><div id="moves">Noch keine Züge.</div>
-<p class="note">Die Engine wird über einen externen CDN geladen und benötigt Internet. Die Analyse ist nur für Training und erlaubte Partien gedacht.</p>
-</main>
-<script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#fff;font:16px system-ui,sans-serif}main{max-width:590px;margin:auto;padding:20px}h1{font-size:1.5rem}#board{display:grid;grid-template-columns:repeat(8,1fr);width:100%;aspect-ratio:1;max-width:540px;border:3px solid #4b5563}.square{border:0;border-radius:0;min-width:0;display:flex;align-items:center;justify-content:center;font-size:clamp(25px,7vw,57px);cursor:pointer;line-height:1}.light{background:#f0d9b5}.dark{background:#b58863}.selected{outline:4px solid #facc15;outline-offset:-4px}.piece-w{color:#fff;text-shadow:0 2px 2px #111,1px 0 #111,-1px 0 #111}.piece-b{color:#111827;text-shadow:0 1px #eee}button.action{background:#2563eb;color:white;border:0;border-radius:8px;padding:12px;margin:5px 4px 5px 0;font-size:15px}button.action:disabled{opacity:.45}#status,#engineStatus,#recommendation{padding:9px 0}#moves{overflow-wrap:anywhere;color:#cbd5e1}.note{color:#fbbf24;font-size:.9rem;line-height:1.5}
+</style></head><body><main><h1>♟️ Ray-Ban Schach</h1><p class="note">Browser-Prototyp: Noch keine Verbindung zur Brillenkamera oder zum Brillendisplay.</p><div id="board" role="group" aria-label="Schachbrett"></div><div id="status"></div><button class="action" id="analyze" disabled>Besten Zug berechnen (folgt)</button><button class="action" id="computer" disabled>Gegen Computer (folgt)</button><button class="action" id="reset">Neues Spiel</button><button class="action" id="undo">Zug zurück</button><button class="action" id="flip">Brett drehen</button><div id="engineStatus">Stockfish wird in einem nächsten Schritt zuverlässig eingebunden.</div><div id="recommendation"></div><h2>Zugliste</h2><div id="moves">Noch keine Züge.</div><p class="note">Zum Bewegen erst eine Figur, dann das Zielfeld antippen. Analysehilfe nur in erlaubten Partien verwenden.</p></main>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.3/chess.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/chessboard.js/1.0.0/chessboard-1.0.0.min.js"></script>
 <script>
-const game = new Chess();
-let engine=null, ready=false, busy=false, againstComputer=false, pending=null;
-const statusEngine=document.getElementById('engineStatus');
-const recommendation=document.getElementById('recommendation');
-function send(cmd){if(engine)engine.postMessage(cmd)}
-function requestEngine(kind){
- if(!ready||busy||game.game_over())return;
- busy=true; pending=kind;
- recommendation.textContent='Stockfish denkt …';
- send('position fen '+game.fen());
- send('go depth 12');
+(function(){
+const status=document.getElementById('status'),board=document.getElementById('board'),moves=document.getElementById('moves');
+if(typeof Chess==='undefined'){status.textContent='Die Schachregeln konnten nicht geladen werden. Bitte Seite neu laden.';return}
+const game=new Chess(),glyph={wk:'♔',wq:'♕',wr:'♖',wb:'♗',wn:'♘',wp:'♙',bk:'♚',bq:'♛',br:'♜',bb:'♝',bn:'♞',bp:'♟'};
+let selected=null,flipped=false;
+function draw(){
+board.replaceChildren();
+const ranks=flipped?[1,2,3,4,5,6,7,8]:[8,7,6,5,4,3,2,1];
+const files=flipped?'hgfedcba':'abcdefgh';
+for(const rank of ranks){for(const file of files){
+const sq=file+rank,p=game.get(sq),cell=document.createElement('button');
+cell.type='button';cell.className='square '+(((files.indexOf(file)+ranks.indexOf(rank))%2===0)?'light':'dark')+(sq===selected?' selected':'');
+cell.setAttribute('aria-label',sq+(p?' '+p.color+p.type:''));
+if(p){const span=document.createElement('span');span.className='piece-'+p.color;span.textContent=glyph[p.color+p.type];cell.appendChild(span)}
+cell.onclick=()=>choose(sq);board.appendChild(cell);
+}}
+let label=game.turn()==='w'?'Weiß am Zug':'Schwarz am Zug';
+if(game.in_checkmate())label='Schachmatt!';else if(game.in_draw())label='Remis!';else if(game.in_check())label+=' – Schach!';
+status.textContent=label;moves.textContent=game.pgn()||'Noch keine Züge.';
 }
-try{
- const workerSource="importScripts('https://cdn.jsdelivr.net/npm/stockfish@19.0.1/bin/stockfish-19-asm.js');";
- const workerUrl=URL.createObjectURL(new Blob([workerSource],{type:'text/javascript'}));
- engine=new Worker(workerUrl);
- URL.revokeObjectURL(workerUrl);
- engine.onerror=()=>{ready=false;busy=false;statusEngine.textContent='Stockfish konnte nicht geladen werden. Prüfe die Internetverbindung.'};
- engine.onmessage=(event)=>{
-  const line=String(event.data);
-  if(line.includes('uciok')){send('isready')}
-  if(line.includes('readyok')){ready=true;statusEngine.textContent='Stockfish bereit'}
-  const match=line.match(/bestmove ([a-h][1-8][a-h][1-8][qrbn]?)/);
-  if(match && busy){
-   const kind=pending;busy=false;pending=null;
-   const uci=match[1], from=uci.slice(0,2),to=uci.slice(2,4);
-   if(kind==='play'){
-    const move=game.move({from,to,promotion:uci[4]||'q'});
-    if(move){board.position(game.fen());refresh();}
-    recommendation.textContent='Computerzug: '+(move?move.san:uci);
-   }else{
-    const copy=new Chess(game.fen());
-    const move=copy.move({from,to,promotion:uci[4]||'q'});
-    recommendation.textContent='Empfohlener Zug: '+(move?move.san:uci);
-   }
-  }
- };
- send('uci');
-}catch(e){statusEngine.textContent='Stockfish konnte nicht gestartet werden.'}
-
-const board = Chessboard('board', {
- draggable:true,position:'start',
- onDragStart:(source,piece)=>!game.game_over() && piece[0]===game.turn(),
- onDrop:(source,target)=>{
-  const move=game.move({from:source,to:target,promotion:'q'});
-  if(!move)return 'snapback';
-  recommendation.textContent='';refresh();
-  if(againstComputer && ready && !game.game_over())requestEngine('play');
- },
- onSnapEnd:()=>board.position(game.fen())
-});
-function refresh(){
- let s=game.turn()==='w'?'Weiß am Zug':'Schwarz am Zug';
- if(game.in_checkmate())s='Schachmatt!';
- else if(game.in_draw())s='Remis!';
- else if(game.in_check())s+=' – Schach!';
- document.getElementById('status').textContent=s;
- document.getElementById('moves').textContent=game.pgn()||'Noch keine Züge.';
+function choose(sq){
+if(game.game_over())return;
+const p=game.get(sq);
+if(!selected){if(p&&p.color===game.turn())selected=sq;draw();return}
+if(sq===selected){selected=null;draw();return}
+const m=game.move({from:selected,to:sq,promotion:'q'});
+if(m){selected=null}else if(p&&p.color===game.turn()){selected=sq}else{selected=null}
+draw();
 }
-document.getElementById('analyze').onclick=()=>requestEngine('analyze');
-document.getElementById('computer').onclick=()=>{
- againstComputer=!againstComputer;
- document.getElementById('computer').textContent='Gegen Computer: '+(againstComputer?'An':'Aus');
- if(againstComputer&&ready&&!busy&&!game.game_over()&&game.turn()==='b')requestEngine('play');
-};
-document.getElementById('reset').onclick=()=>{if(busy){send('stop');busy=false;pending=null}game.reset();board.start();recommendation.textContent='';refresh()};
-document.getElementById('undo').onclick=()=>{if(busy){send('stop');busy=false;pending=null}game.undo();if(againstComputer)game.undo();board.position(game.fen());recommendation.textContent='';refresh()};
-document.getElementById('flip').onclick=()=>board.flip();
-refresh();
+document.getElementById('reset').onclick=()=>{game.reset();selected=null;draw()};
+document.getElementById('undo').onclick=()=>{game.undo();selected=null;draw()};
+document.getElementById('flip').onclick=()=>{flipped=!flipped;selected=null;draw()};
+draw();
+})();
 </script></body></html>
